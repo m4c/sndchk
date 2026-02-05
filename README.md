@@ -1,4 +1,4 @@
-# sndchk
+# sndchk.sh
 
 Real-time audio diagnostics tool for FreeBSD. Monitors audio buffer xruns, USB transfer errors, and interrupt rate spikes to help identify causes of audio glitches and dropouts.
 
@@ -35,7 +35,7 @@ sudo cp sndchk.sh /usr/local/bin/sndchk
 ## Usage
 
 ```
-usage: sndchk [-d device] [-p] [-xruns] [-usb] [-w] [-i interval] [-t threshold]
+usage: sndchk.sh [-d device] [-p] [-xruns] [-usb] [-w] [-i interval] [-t threshold]
 
 Options:
   -d N      Monitor device pcmN (default: system default)
@@ -51,7 +51,7 @@ Options:
 Running without `-w` displays available audio devices and help:
 
 ```sh
-./sndchk
+./sndchk.sh
 ```
 
 ```
@@ -65,7 +65,7 @@ Available audio devices:
   pcm5: <Realtek ALC236 (Front Analog Headphones)> (play)
   pcm6 (default) [usb:0.4]: <Focusrite Scarlett Solo 4th Gen> (play/rec) default
 
-usage: sndchk [-d device] [-p] [-xruns] [-usb] [-w] [-i interval] [-t threshold]
+usage: sndchk.sh [-d device] [-p] [-xruns] [-usb] [-w] [-i interval] [-t threshold]
 ...
 ```
 
@@ -73,25 +73,25 @@ usage: sndchk [-d device] [-p] [-xruns] [-usb] [-w] [-i interval] [-t threshold]
 
 ```sh
 # List available devices
-sndchk
+sndchk.sh
 
 # Monitor default device (xruns + USB + IRQ)
-sndchk -w
+sndchk.sh -w
 
 # Monitor specific device
-sndchk -d 6 -w
+sndchk.sh -d 6 -w
 
 # Monitor only playback xruns
-sndchk -p -xruns -w
+sndchk.sh -p -xruns -w
 
 # Monitor only USB errors and IRQ spikes
-sndchk -usb -w
+sndchk.sh -usb -w
 
 # Set IRQ spike threshold to 2x baseline
-sndchk -t 2.0 -w
+sndchk.sh -t 2.0 -w
 
 # Check every 2 seconds with 1.8x threshold
-sndchk -i 2 -t 1.8 -w
+sndchk.sh -i 2 -t 1.8 -w
 ```
 
 ## Output
