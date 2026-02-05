@@ -118,7 +118,7 @@ Output appears only when changes or problems are detected. Silence means everyth
 Buffer underrun (playback) or overrun (recording). Non-zero or increasing value indicates the system can't keep up with audio data flow. Common causes: CPU load, insufficient buffer size, wrong latency settings.
 
 ### UE_ISOCHRONOUS_FAIL
-USB isochronous transfer failures. Critical for audio — isochronous transfers are used for real-time audio streaming. Increasing values indicate USB communication problems.
+USB isochronous transfer failures. Critical for audio:  isochronous transfers are used for real-time audio streaming. Increasing values indicate USB communication problems. Note: small increments (+2, +4) without audible artifacts may occur during track changes, stream start/stop, or sample rate switching - this is normal behavior, not a problem.
 
 ### UE_CONTROL_FAIL / UE_BULK_FAIL / UE_INTERRUPT_FAIL
 Other USB transfer failures. Less common for audio but may indicate general USB issues.
@@ -161,6 +161,11 @@ If you see problems, try:
 - `usbconfig(8)` — USB device configuration
 - `vmstat -i` — interrupt statistics
 - `/dev/sndstat` — kernel sound status
+
+## Further reading
+
+- [FreeBSD audio setup: bitperfect, equalizer, realtime](https://m4c.pl/blog/freebsd-audio-setup-bitperfect-equalizer-realtime/) — practical guide to configuring audio on FreeBSD
+- [Vox FreeBSD: How Sound Works](https://freebsdfoundation.org/our-work/journal/browser-based-edition/freebsd-15-0/vox-freebsd-how-sound-works/) — in-depth article about FreeBSD sound(4) internals by Christos Margiolis (author of sndctl)
 
 ## License
 
