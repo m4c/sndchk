@@ -6,11 +6,11 @@ The script is an addendum to the article: [FreeBSD audio diagnostics and optimis
 
 ## Features
 
-- **xruns monitoring** — tracks buffer underruns (playback) and overruns (recording)
-- **USB error tracking** — monitors UE_ISOCHRONOUS_FAIL, UE_CONTROL_FAIL, UE_BULK_FAIL, UE_INTERRUPT_FAIL
-- **IRQ spike detection** — detects interrupt rate anomalies on USB controller with configurable threshold
-- **Automatic device correlation** — maps pcm devices to USB devices (ugen) and controllers (xhci/ehci)
-- **Works with any audio device** — USB, PCI, or built-in (USB features auto-disabled for non-USB devices)
+- **xruns monitoring** - tracks buffer underruns (playback) and overruns (recording)
+- **USB error tracking** - monitors UE_ISOCHRONOUS_FAIL, UE_CONTROL_FAIL, UE_BULK_FAIL, UE_INTERRUPT_FAIL
+- **IRQ spike detection** - detects interrupt rate anomalies on USB controller with configurable threshold
+- **Automatic device correlation** - maps pcm devices to USB devices (ugen) and controllers (xhci/ehci)
+- **Works with any audio device** - USB, PCI, or built-in (USB features auto-disabled for non-USB devices)
 
 ## Requirements
 
