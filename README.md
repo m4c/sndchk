@@ -57,8 +57,13 @@ Running without `-w` displays available audio devices and help:
 ```
 Available audio devices:
 
-  pcm0: <Realtek ALC892> (play/rec)
-  pcm6 (default) [usb:0.4]: <Focusrite Scarlett Solo 4th Gen> (play/rec)
+  pcm0: <ATI R6xx (HDMI)> (play)
+  pcm1: <ATI R6xx (HDMI)> (play)
+  pcm2: <ATI R6xx (HDMI)> (play)
+  pcm3: <ATI R6xx (HDMI)> (play)
+  pcm4: <Realtek ALC236 (Analog)> (play/rec)
+  pcm5: <Realtek ALC236 (Front Analog Headphones)> (play)
+  pcm6 (default) [usb:0.4]: <Focusrite Scarlett Solo 4th Gen> (play/rec) default
 
 usage: sndchk [-d device] [-p] [-xruns] [-usb] [-w] [-i interval] [-t threshold]
 ...
