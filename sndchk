@@ -1,0 +1,459 @@
+#!/bin/sh
+#
+# sndchk - Monitor audio xruns and USB errors on FreeBSD
+#
+# Usage:
+#   sndchk [-d device] [-p] [-x] [-u] [-i interval]
+#
+# Options:
+#   -d N        Monitor device pcmN (default: system default)
+#   -p          Show only playback channels (no recording)
+#   -x          Show only xruns (no USB errors)
+#   -u          Show only USB errors (no xruns)
+#   -i SEC      Interval in seconds (default: 1)
+#   -h          Show help
+#
+
+usage() {
+    cat << EOF
+usage: ${0##*/} [-d device] [-p] [-xruns] [-usb] [-w] [-i interval] [-t threshold]
+
+Options:
+  -d N      Monitor device pcmN (default: system default)
+  -p        Show only playback channels
+  -xruns    Show only xruns (no USB errors, no IRQ monitoring)
+  -usb      Show only USB errors and IRQ monitoring (no xruns)
+  -w        Watch mode - start monitoring
+  -i SEC    Interval in seconds (default: 1)
+  -t N      IRQ spike threshold multiplier (default: 1.5)
+  -h        Show this help
+
+Notes:
+  Without -w, shows available devices and exits.
+  IRQ monitoring is enabled when USB monitoring is active.
+  Use -usb to monitor only USB errors and IRQ spikes.
+  Use -xruns to monitor only audio buffer xruns (no IRQ).
+
+Examples:
+  ${0##*/}              List available audio devices
+  ${0##*/} -w           Monitor default device
+  ${0##*/} -d 1 -w      Monitor pcm1
+  ${0##*/} -d 0 -p -w   Monitor only playback xruns on pcm0
+  ${0##*/} -xruns -w    Monitor only xruns
+  ${0##*/} -usb -w      Monitor only USB errors and IRQ
+  ${0##*/} -t 2.0 -w    Set IRQ spike threshold to 2x baseline
+EOF
+}
+
+# Get default audio unit
+get_default_unit() {
+    sysctl -n hw.snd.default_unit 2>/dev/null || echo "0"
+}
+
+# List available audio devices
+list_devices() {
+    _default=$(get_default_unit)
+    
+    echo "Available audio devices:"
+    echo ""
+    
+    cat /dev/sndstat 2>/dev/null | grep "^pcm" | while read -r line; do
+        _unit=$(echo "$line" | sed -E 's/^pcm([0-9]+):.*/\1/')
+        _desc=$(echo "$line" | sed -E 's/^pcm[0-9]+:[[:space:]]*//')
+        
+        # Check if USB device
+        _parent=$(sysctl -n dev.pcm."${_unit}".%parent 2>/dev/null)
+        _usb=""
+        if [ -n "$_parent" ]; then
+            case "$_parent" in
+                uaudio*)
+                    _uaudio_num=$(echo "$_parent" | sed 's/uaudio//')
+                    _location=$(sysctl -n dev.uaudio."${_uaudio_num}".%location 2>/dev/null)
+                    if [ -n "$_location" ]; then
+                        _ugen=$(echo "$_location" | sed -E 's/.*ugen=ugen([0-9]+\.[0-9]+).*/\1/')
+                        [ -n "$_ugen" ] && _usb=" [usb:${_ugen}]"
+                    fi
+                    ;;
+            esac
+        fi
+        
+        # Mark default device
+        _mark=""
+        [ "$_unit" = "$_default" ] && _mark=" (default)"
+        
+        echo "  pcm${_unit}${_mark}${_usb}: ${_desc}"
+    done
+    
+    echo ""
+}
+
+# Find USB device (ugenX.Y) associated with pcmN
+find_usb_for_pcm() {
+    _pcm_unit="$1"
+    
+    # Method 1: Use sysctl dev.pcm.X.%parent -> uaudio -> %location (contains ugen=)
+    _parent=$(sysctl -n dev.pcm."${_pcm_unit}".%parent 2>/dev/null)
+    
+    if [ -n "$_parent" ]; then
+        case "$_parent" in
+            uaudio*)
+                _uaudio_num=$(echo "$_parent" | sed 's/uaudio//')
+                # Get %location which contains ugen=ugenX.Y directly
+                _location=$(sysctl -n dev.uaudio."${_uaudio_num}".%location 2>/dev/null)
+                if [ -n "$_location" ]; then
+                    _ugen=$(echo "$_location" | sed -E 's/.*ugen=ugen([0-9]+\.[0-9]+).*/\1/')
+                    if [ -n "$_ugen" ]; then
+                        echo "$_ugen"
+                        return 0
+                    fi
+                fi
+                ;;
+        esac
+    fi
+    
+    # Method 2: Match device name from sndctl with usbconfig
+    _desc=$(sndctl -f /dev/dsp"${_pcm_unit}" 2>/dev/null | head -1)
+    
+    if [ -n "$_desc" ]; then
+        # Extract device name between < and >
+        _name=$(echo "$_desc" | sed -E 's/.*<([^>]+)>.*/\1/' | cut -d' ' -f1-3)
+        
+        if [ -n "$_name" ]; then
+            # Search in usbconfig for matching device
+            _found=$(usbconfig 2>/dev/null | grep -i "$_name" | head -1 | sed -E 's/^ugen([0-9]+\.[0-9]+):.*/\1/')
+            if [ -n "$_found" ]; then
+                echo "$_found"
+                return 0
+            fi
+        fi
+    fi
+    
+    return 1
+}
+
+# Get xruns for a device
+get_xruns() {
+    _unit="$1"
+    _play_only="$2"
+    
+    sndctl -f /dev/dsp"${_unit}" -v -o 2>/dev/null | while read -r line; do
+        case "$line" in
+            *xruns=*)
+                # Line format: "dsp6.play.0.xruns=0"
+                # Extract channel name (remove .xruns=N from end)
+                _chan=$(echo "$line" | sed -E 's/\.xruns=[0-9]+$//')
+                _xruns="${line##*=}"
+                
+                if [ "$_play_only" = "1" ]; then
+                    case "$line" in
+                        *play*) echo "${_chan} ${_xruns}" ;;
+                    esac
+                else
+                    echo "${_chan} ${_xruns}"
+                fi
+                ;;
+        esac
+    done
+}
+
+# Get USB stats for a device
+get_usb_stats() {
+    _ugen="$1"
+    usbconfig -d "$_ugen" dump_stats 2>/dev/null
+}
+
+# Parse USB stat value
+parse_usb_value() {
+    echo "$1" | grep "$2" | awk -F: '{gsub(/[^0-9]/, "", $2); print $2}'
+}
+
+# Find USB controller and IRQ for a given ugen device
+# Returns: "controller_name irq_name" (e.g., "xhci0 irq256")
+find_usb_controller() {
+    _ugen="$1"
+    _bus=$(echo "$_ugen" | cut -d. -f1)
+    
+    # Get parent of usbus (e.g., xhci0, ehci0)
+    _controller=$(sysctl -n dev.usbus."${_bus}".%parent 2>/dev/null)
+    
+    if [ -n "$_controller" ]; then
+        # Find IRQ in vmstat -i output
+        _irq=$(vmstat -i 2>/dev/null | grep "${_controller}" | awk '{print $1}' | sed 's/://')
+        if [ -n "$_irq" ]; then
+            echo "${_controller} ${_irq}"
+            return 0
+        fi
+    fi
+    
+    return 1
+}
+
+# Get current interrupt count for an IRQ
+get_irq_count() {
+    _irq="$1"
+    _count=$(vmstat -i 2>/dev/null | grep "${_irq}:" | awk '{print $3}')
+    # Return 0 if empty
+    echo "${_count:-0}"
+}
+
+# Show initial status
+show_status() {
+    _unit="$1"
+    _play_only="$2"
+    _ugen="$3"
+    _show_xruns="$4"
+    _show_usb="$5"
+    
+    echo "pcm${_unit}:"
+    
+    if [ "$_show_xruns" = "1" ]; then
+        get_xruns "$_unit" "$_play_only" | while read -r chan xruns; do
+            [ -z "$chan" ] && continue
+            echo "  ${chan}: ${xruns} xruns"
+        done
+    fi
+    
+    if [ "$_show_usb" = "1" ] && [ -n "$_ugen" ]; then
+        _stats=$(get_usb_stats "$_ugen")
+        if [ -n "$_stats" ]; then
+            _ctrl=$(parse_usb_value "$_stats" "UE_CONTROL_FAIL")
+            _iso=$(parse_usb_value "$_stats" "UE_ISOCHRONOUS_FAIL")
+            _bulk=$(parse_usb_value "$_stats" "UE_BULK_FAIL")
+            _int=$(parse_usb_value "$_stats" "UE_INTERRUPT_FAIL")
+            echo "  usb ${_ugen}: CTRL=${_ctrl} ISO=${_iso} BULK=${_bulk} INT=${_int}"
+        fi
+    fi
+}
+
+# Main watch loop
+watch_loop() {
+    _unit="$1"
+    _play_only="$2"
+    _interval="$3"
+    _ugen="$4"
+    _show_xruns="$5"
+    _show_usb="$6"
+    _threshold_mult="$7"
+    
+    # Convert threshold to integer (multiply by 10 for 1 decimal precision)
+    _threshold_x10=$(echo "$_threshold_mult" | awk '{printf "%.0f", $1 * 10}')
+    
+    # Get device description
+    _dev_desc=$(cat /dev/sndstat 2>/dev/null | grep "^pcm${_unit}:" | sed -E 's/^pcm[0-9]+:[[:space:]]*//')
+    
+    echo "Monitoring pcm${_unit}: ${_dev_desc}"
+    [ -n "$_ugen" ] && [ "$_show_usb" = "1" ] && echo "USB device: ugen${_ugen}"
+    
+    # Find USB controller and IRQ
+    _controller=""
+    _irq=""
+    if [ -n "$_ugen" ] && [ "$_show_usb" = "1" ]; then
+        _ctrl_info=$(find_usb_controller "$_ugen")
+        if [ -n "$_ctrl_info" ]; then
+            _controller=$(echo "$_ctrl_info" | cut -d' ' -f1)
+            _irq=$(echo "$_ctrl_info" | cut -d' ' -f2)
+            echo "USB controller: ${_controller} (${_irq})"
+        fi
+    fi
+    
+    echo "----------------------------------------"
+    
+    # Initialize xruns tracking
+    _prev_xruns=""
+    _first_run=1
+    
+    # Initialize USB tracking
+    if [ -n "$_ugen" ] && [ "$_show_usb" = "1" ]; then
+        _stats=$(get_usb_stats "$_ugen")
+        _prev_ctrl=$(parse_usb_value "$_stats" "UE_CONTROL_FAIL")
+        _prev_iso=$(parse_usb_value "$_stats" "UE_ISOCHRONOUS_FAIL")
+        _prev_bulk=$(parse_usb_value "$_stats" "UE_BULK_FAIL")
+        _prev_int=$(parse_usb_value "$_stats" "UE_INTERRUPT_FAIL")
+    fi
+    
+    # Initialize IRQ tracking
+    _prev_irq_count=0
+    _irq_baseline=0
+    _irq_samples=0
+    if [ -n "$_irq" ]; then
+        _prev_irq_count=$(get_irq_count "$_irq")
+    fi
+    
+    # Show initial values
+    _init_timestamp=$(date '+%H:%M:%S')
+    
+    if [ "$_show_xruns" = "1" ]; then
+        _init_xruns=$(get_xruns "$_unit" "$_play_only" | while read -r chan xruns; do
+            [ -z "$chan" ] && continue
+            # Convert dspX to pcmX (chan already contains full name like dsp6.play.0)
+            _pcm_chan=$(echo "$chan" | sed "s/^dsp/pcm/")
+            echo -n "${_pcm_chan}=${xruns} "
+        done)
+        [ -n "$_init_xruns" ] && echo "[${_init_timestamp}] Initial xruns: ${_init_xruns}"
+    fi
+    
+    if [ "$_show_usb" = "1" ] && [ -n "$_ugen" ]; then
+        echo "[${_init_timestamp}] Initial USB: CTRL=$_prev_ctrl ISO=$_prev_iso BULK=$_prev_bulk INT=$_prev_int"
+        
+        # Add IRQ baseline info
+        if [ -n "$_irq" ]; then
+            echo "[${_init_timestamp}] Initial IRQ: calibrating..."
+        fi
+    fi
+    
+    while true; do
+        _timestamp=$(date '+%H:%M:%S')
+        
+        # Check xruns
+        if [ "$_show_xruns" = "1" ]; then
+            _current_xruns=$(get_xruns "$_unit" "$_play_only")
+            
+            echo "$_current_xruns" | while read -r chan xruns; do
+                [ -z "$chan" ] && continue
+                [ "$xruns" = "0" ] && continue
+                
+                # Convert dspX to pcmX
+                _pcm_chan=$(echo "$chan" | sed "s/^dsp/pcm/")
+                
+                _prev=$(echo "$_prev_xruns" | grep "^${chan} " | cut -d' ' -f2)
+                [ -z "$_prev" ] && _prev=0
+                
+                if [ "$_prev" != "$xruns" ]; then
+                    _diff=$((xruns - _prev))
+                    echo "[${_timestamp}] ${_pcm_chan} xruns: ${_prev} -> ${xruns} (+${_diff})"
+                fi
+            done
+            
+            _prev_xruns="$_current_xruns"
+        fi
+        
+        # Check USB errors
+        if [ "$_show_usb" = "1" ] && [ -n "$_ugen" ]; then
+            _stats=$(get_usb_stats "$_ugen")
+            
+            if [ -z "$_stats" ]; then
+                echo "[${_timestamp}] USB WARNING: Device disconnected or not responding"
+            else
+                _ctrl=$(parse_usb_value "$_stats" "UE_CONTROL_FAIL")
+                _iso=$(parse_usb_value "$_stats" "UE_ISOCHRONOUS_FAIL")
+                _bulk=$(parse_usb_value "$_stats" "UE_BULK_FAIL")
+                _int=$(parse_usb_value "$_stats" "UE_INTERRUPT_FAIL")
+                
+                if [ "$_ctrl" != "$_prev_ctrl" ]; then
+                    _diff=$((_ctrl - _prev_ctrl))
+                    echo "[${_timestamp}] UE_CONTROL_FAIL: $_prev_ctrl -> $_ctrl (+$_diff)"
+                    _prev_ctrl="$_ctrl"
+                fi
+                
+                if [ "$_iso" != "$_prev_iso" ]; then
+                    _diff=$((_iso - _prev_iso))
+                    echo "[${_timestamp}] UE_ISOCHRONOUS_FAIL: $_prev_iso -> $_iso (+$_diff)"
+                    _prev_iso="$_iso"
+                fi
+                
+                if [ "$_bulk" != "$_prev_bulk" ]; then
+                    _diff=$((_bulk - _prev_bulk))
+                    echo "[${_timestamp}] UE_BULK_FAIL: $_prev_bulk -> $_bulk (+$_diff)"
+                    _prev_bulk="$_bulk"
+                fi
+                
+                if [ "$_int" != "$_prev_int" ]; then
+                    _diff=$((_int - _prev_int))
+                    echo "[${_timestamp}] UE_INTERRUPT_FAIL: $_prev_int -> $_int (+$_diff)"
+                    _prev_int="$_int"
+                fi
+            fi
+        fi
+        
+        # Check IRQ rate
+        if [ -n "$_irq" ]; then
+            _curr_irq_count=$(get_irq_count "$_irq")
+            _irq_rate=$((_curr_irq_count - _prev_irq_count))
+            
+            # Build baseline over first 10 samples
+            if [ "$_irq_samples" -lt 10 ]; then
+                _irq_samples=$((_irq_samples + 1))
+                _irq_baseline=$(( (_irq_baseline * (_irq_samples - 1) + _irq_rate) / _irq_samples ))
+                
+                if [ "$_irq_samples" -eq 10 ]; then
+                    echo "[${_timestamp}] ${_controller} baseline: ${_irq_baseline}/s"
+                fi
+            else
+                # Check for spike (threshold_x10 / 10 * baseline)
+                if [ "$_irq_baseline" -gt 0 ]; then
+                    _threshold=$((_irq_baseline * _threshold_x10 / 10))
+                    if [ "$_irq_rate" -gt "$_threshold" ]; then
+                        _ratio=$((_irq_rate * 10 / _irq_baseline))
+                        _ratio_int=$((_ratio / 10))
+                        _ratio_dec=$((_ratio % 10))
+                        echo "[${_timestamp}] ${_controller}: ${_irq_baseline} -> ${_irq_rate}/s (${_ratio_int}.${_ratio_dec}x)"
+                    fi
+                fi
+            fi
+            
+            _prev_irq_count="$_curr_irq_count"
+        fi
+        
+        _first_run=0
+        sleep "$_interval"
+    done
+}
+
+# Defaults
+device=""
+play_only=0
+show_xruns=1
+show_usb=1
+interval=1
+watch_mode=0
+irq_threshold="1.5"
+
+# Parse options
+while [ $# -gt 0 ]; do
+    case "$1" in
+        -d) device="$2"; shift 2 ;;
+        -i) interval="$2"; shift 2 ;;
+        -t) irq_threshold="$2"; shift 2 ;;
+        -p) play_only=1; shift ;;
+        -w) watch_mode=1; shift ;;
+        -xruns) show_xruns=1; show_usb=0; shift ;;
+        -usb) show_xruns=0; show_usb=1; shift ;;
+        -h|--help) list_devices; usage; exit 0 ;;
+        *) echo "Unknown option: $1"; usage; exit 1 ;;
+    esac
+done
+
+# If not watch mode, show devices and help
+if [ "$watch_mode" = "0" ]; then
+    list_devices
+    usage
+    exit 0
+fi
+
+# Use default device if not specified
+if [ -z "$device" ]; then
+    device=$(get_default_unit)
+fi
+
+# Check if pcm device exists
+if ! sndctl -f /dev/dsp"${device}" >/dev/null 2>&1; then
+    echo "Error: device pcm${device} not found" >&2
+    exit 1
+fi
+
+# Find corresponding USB device
+usb_device=""
+if [ "$show_usb" = "1" ]; then
+    usb_device=$(find_usb_for_pcm "$device")
+    if [ -z "$usb_device" ]; then
+        echo "Warning: Could not find USB device for pcm${device}" >&2
+        echo "USB monitoring disabled. Use -x to monitor xruns only." >&2
+        show_usb=0
+    elif ! usbconfig -d "$usb_device" dump_stats >/dev/null 2>&1; then
+        echo "Warning: USB device ${usb_device} not accessible" >&2
+        show_usb=0
+    fi
+fi
+
+# Run watch loop (always in watch mode for combined monitoring)
+watch_loop "$device" "$play_only" "$interval" "$usb_device" "$show_xruns" "$show_usb" "$irq_threshold"
