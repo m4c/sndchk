@@ -1,17 +1,16 @@
 #!/bin/sh
 #
-# sndchk - Monitor audio xruns and USB errors on FreeBSD
+# sndchk - Real-time audio diagnostics for FreeBSD
+#
+# Monitors audio buffer xruns, USB transfer errors, and IRQ spikes
+# to help identify causes of audio glitches and dropouts.
 #
 # Usage:
-#   sndchk [-d device] [-p] [-x] [-u] [-i interval]
-#
-# Options:
-#   -d N        Monitor device pcmN (default: system default)
-#   -p          Show only playback channels (no recording)
-#   -x          Show only xruns (no USB errors)
-#   -u          Show only USB errors (no xruns)
-#   -i SEC      Interval in seconds (default: 1)
-#   -h          Show help
+#   sndchk                     List devices and show help
+#   sndchk -w                  Monitor default device
+#   sndchk -d N -w             Monitor device pcmN
+#   sndchk -xruns -w           Monitor only xruns
+#   sndchk -usb -w             Monitor only USB errors and IRQ
 #
 
 usage() {
@@ -447,7 +446,7 @@ if [ "$show_usb" = "1" ]; then
     usb_device=$(find_usb_for_pcm "$device")
     if [ -z "$usb_device" ]; then
         echo "Warning: Could not find USB device for pcm${device}" >&2
-        echo "USB monitoring disabled. Use -x to monitor xruns only." >&2
+        echo "USB monitoring disabled." >&2
         show_usb=0
     elif ! usbconfig -d "$usb_device" dump_stats >/dev/null 2>&1; then
         echo "Warning: USB device ${usb_device} not accessible" >&2
