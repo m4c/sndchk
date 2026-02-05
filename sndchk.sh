@@ -25,17 +25,17 @@
 # OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
 # SUCH DAMAGE.
 #
-# sndchk - Real-time audio diagnostics for FreeBSD
+# sndchk.sh - Real-time audio diagnostics for FreeBSD
 #
 # Monitors audio buffer xruns, USB transfer errors, and IRQ spikes
 # to help identify causes of audio glitches and dropouts.
 #
 # Usage:
-#   sndchk                     List devices and show help
-#   sndchk -w                  Monitor default device
-#   sndchk -d N -w             Monitor device pcmN
-#   sndchk -xruns -w           Monitor only xruns
-#   sndchk -usb -w             Monitor only USB errors and IRQ
+#   sndchk.sh                     List devices and show help
+#   sndchk.sh -w                  Monitor default device
+#   sndchk.sh -d N -w             Monitor device pcmN
+#   sndchk.sh -xruns -w           Monitor only xruns
+#   sndchk.sh -usb -w             Monitor only USB errors and IRQ
 #
 
 usage() {
