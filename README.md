@@ -4,6 +4,8 @@ Real-time audio diagnostics tool for FreeBSD that monitors audio buffer xruns, U
 
 The script is an addendum to the article: [FreeBSD audio diagnostics and optimisation](https://m4c.pl/blog/freebsd-audio-diagnostics-and-optimization/).
 
+A C implementation (sndchk.c) is also available, offering faster startup and lower resource usage by eliminating external shell invocations.
+
 ## Features
 
 - **xruns monitoring** - tracks buffer underruns (playback) and overruns (recording)
