@@ -26,7 +26,8 @@
  *
  * sndchk - Real-time audio diagnostics for FreeBSD
  *
- * Monitors audio buffer xruns, USB transfer errors, and IRQ spikes.
+ * Monitors audio buffer xruns, USB transfer errors, and IRQ spikes
+ * to help identify causes of audio glitches and dropouts.
  *
  * Usage:
  *   sndchk                     List devices and show help
