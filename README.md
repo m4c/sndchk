@@ -31,7 +31,16 @@ cd sndchk
 chmod +x sndchk.sh
 
 # Optional: install system-wide
-sudo cp sndchk.sh /usr/local/bin/sndchk
+sudo cp sndchk.sh /usr/local/bin/sndchk.sh
+
+# Build C implementation
+make
+
+# or
+cc -o sndchk sndchk.c
+
+# Optional: install C program system-wide
+sudo cp sndchk /usr/local/bin/sndchk
 ```
 
 ## Usage
