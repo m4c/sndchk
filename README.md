@@ -1,4 +1,4 @@
-# sndchk.sh
+# sndchk
 
 Real-time audio diagnostics tool for FreeBSD that monitors audio buffer xruns, USB transfer errors, and interrupt rate spikes, especially for USB DAC devices and music interfaces, to help identify causes of audio glitches and dropouts.
 
