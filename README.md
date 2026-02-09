@@ -1,6 +1,6 @@
 # sndchk
 
-Real-time audio diagnostics tool for FreeBSD that monitors audio buffer xruns, USB transfer errors, and interrupt rate spikes, especially for USB DAC devices and music interfaces, to help identify causes of audio glitches and dropouts.
+Real-time monitoring of system-level audio performance metrics tool for FreeBSD that monitors audio buffer xruns, USB transfer errors, and interrupt rate spikes, especially for USB DAC devices and music interfaces, to help identify causes of audio glitches and dropouts.
 
 The script is an addendum to the article: [FreeBSD audio diagnostics and optimisation](https://m4c.pl/blog/freebsd-audio-diagnostics-and-optimization/).
 
