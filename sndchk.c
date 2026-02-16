@@ -376,16 +376,36 @@ get_usb_stats(const char *ugen, struct usb_stats *stats)
 
     line = strtok_r(output, "\n", &saveptr);
     while (line != NULL) {
-        char *p;
+        char *p, *colon;
         
-        if ((p = strstr(line, "UE_CONTROL_FAIL:")) != NULL) {
-            stats->ctrl_fail = atoi(p + 16);
-        } else if ((p = strstr(line, "UE_ISOCHRONOUS_FAIL:")) != NULL) {
-            stats->iso_fail = atoi(p + 20);
-        } else if ((p = strstr(line, "UE_BULK_FAIL:")) != NULL) {
-            stats->bulk_fail = atoi(p + 13);
-        } else if ((p = strstr(line, "UE_INTERRUPT_FAIL:")) != NULL) {
-            stats->int_fail = atoi(p + 18);
+        if ((p = strstr(line, "UE_CONTROL_FAIL")) != NULL) {
+            colon = strchr(p, ':');
+            if (colon) {
+                colon++;
+                while (*colon == ' ' || *colon == '\t') colon++;
+                stats->ctrl_fail = atoi(colon);
+            }
+        } else if ((p = strstr(line, "UE_ISOCHRONOUS_FAIL")) != NULL) {
+            colon = strchr(p, ':');
+            if (colon) {
+                colon++;
+                while (*colon == ' ' || *colon == '\t') colon++;
+                stats->iso_fail = atoi(colon);
+            }
+        } else if ((p = strstr(line, "UE_BULK_FAIL")) != NULL) {
+            colon = strchr(p, ':');
+            if (colon) {
+                colon++;
+                while (*colon == ' ' || *colon == '\t') colon++;
+                stats->bulk_fail = atoi(colon);
+            }
+        } else if ((p = strstr(line, "UE_INTERRUPT_FAIL")) != NULL) {
+            colon = strchr(p, ':');
+            if (colon) {
+                colon++;
+                while (*colon == ' ' || *colon == '\t') colon++;
+                stats->int_fail = atoi(colon);
+            }
         }
 
         line = strtok_r(NULL, "\n", &saveptr);
